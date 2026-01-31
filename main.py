@@ -4,18 +4,15 @@ from instagrapi.exceptions import ChallengeRequired, FeedbackRequired, PleaseWai
 import threading, time, random, os, gc
 
 app = Flask(__name__)
-app.secret_key = "sujal_hawk_warmup_2025"
+app.secret_key = "sujal_hawk_final_2025"
 
-state = {"running": False, "sent": 0, "logs": ["PANEL READY"], "start_time": None, "primary_ok": True, "in_warmup": False}
+state = {"running": False, "sent": 0, "logs": ["PANEL READY - START DABAO"], "start_time": None, "primary_ok": True, "in_warmup": False}
 cfg = {
     "primary": {"sessionid": "", "thread_id": 0},
     "backups": [],
     "messages": [],
     "delay": 30,
-    "long_break_min": 180,
-    "long_break_max": 600,
-    "warmup_min": 300,   # 5 min
-    "warmup_max": 900    # 15 min
+    "warmup_duration": 600  # default 10 min
 }
 
 DEVICES = [
@@ -49,16 +46,15 @@ def spam(cl, tid, msg):
         return False
 
 def warmup(cl):
-    log("WARMUP MODE STARTED (5-15 min random actions)")
-    warmup_time = random.randint(cfg["warmup_min"], cfg["warmup_max"])
+    log(f"WARMUP STARTED ({cfg['warmup_duration']//60} min)")
     state["in_warmup"] = True
     start = time.time()
-    while time.time() - start < warmup_time and state["running"]:
-        action = random.choice(["viewing stories", "liking posts", "reading DMs", "scrolling feed", "checking notifications"])
+    while time.time() - start < cfg["warmup_duration"] and state["running"]:
+        action = random.choice(["viewing stories", "liking posts", "reading DMs", "scrolling feed"])
         log(f"WARMUP: Simulating {action}...")
         time.sleep(random.uniform(10, 60))
     state["in_warmup"] = False
-    log("WARMUP COMPLETE - SPAM SHURU")
+    log("WARMUP DONE - SPAM SHURU")
 
 def get_primary():
     acc = cfg["primary"]
@@ -69,14 +65,14 @@ def get_primary():
     cl.set_user_agent(f"Instagram {dev['app_version']} Android (34/15.0.0; 480dpi; 1080x2340; {dev['phone_manufacturer']}; {dev['phone_model']}; raven; raven; en_US)")
     try:
         cl.login_by_sessionid(acc["sessionid"])
-        log("PRIMARY LOGIN OK")
+        log("PRIMARY LOGIN SUCCESS")
         state["primary_ok"] = True
         return cl
     except LoginRequired:
-        log("PRIMARY EXPIRED")
+        log("PRIMARY SESSION EXPIRED — USING BACKUP")
         state["primary_ok"] = False
     except Exception as e:
-        log(f"PRIMARY FAIL → {str(e)[:80]}")
+        log(f"PRIMARY LOGIN FAILED → {str(e)[:80]} — USING BACKUP")
         state["primary_ok"] = False
     return None
 
@@ -89,11 +85,11 @@ def get_backup():
         cl.set_user_agent(f"Instagram {dev['app_version']} Android (34/15.0.0; 480dpi; 1080x2340; {dev['phone_manufacturer']}; {dev['phone_model']}; raven; raven; en_US)")
         try:
             cl.login_by_sessionid(acc["sessionid"])
-            log("BACKUP LOGIN OK")
+            log("BACKUP LOGIN SUCCESS")
             return cl
         except:
             continue
-    log("NO BACKUP LEFT")
+    log("NO WORKING BACKUP — STOPPING")
     state["running"] = False
     return None
 
@@ -118,12 +114,6 @@ def loop():
                 state["sent"] += 1
                 log(f"SENT #{state['sent']} → {msg[:40]}")
             time.sleep(cfg["delay"] + random.uniform(-2, 3))
-
-            # Random long break after 10-15 msgs
-            if state["sent"] % random.randint(10, 15) == 0:
-                brk = random.randint(cfg["long_break_min"], cfg["long_break_max"])
-                log(f"LONG BREAK {brk//60} min")
-                time.sleep(brk)
         except Exception as e:
             log(f"ERROR → {str(e)[:60]}")
             time.sleep(15)
@@ -142,7 +132,7 @@ def start():
     global state
     state["running"] = False
     time.sleep(1)
-    state = {"running": True, "sent": 0, "logs": ["STARTED"], "start_time": time.time(), "primary_ok": True}
+    state = {"running": True, "sent": 0, "logs": ["STARTED - WAIT FOR LOGIN"], "start_time": time.time(), "primary_ok": True}
 
     cfg["primary"] = {"sessionid": request.form["primary_sessionid"].strip(), "thread_id": int(request.form["thread_id"])}
     backups_raw = request.form["backups"].strip().split("\n")
@@ -154,9 +144,10 @@ def start():
 
     cfg["messages"] = [m.strip() for m in request.form["messages"].split("\n") if m.strip()]
     cfg["delay"] = float(request.form.get("spam_delay", "30"))
+    cfg["warmup_duration"] = int(request.form.get("warmup_duration", "600"))
 
     threading.Thread(target=loop, daemon=True).start()
-    log("STARTED - PRIMARY + BACKUPS (WARMUP ON)")
+    log(f"STARTED - PRIMARY + BACKUPS (Warmup: {cfg['warmup_duration']//60} min)")
 
     return jsonify({"ok": True})
 
