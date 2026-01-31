@@ -4,16 +4,15 @@ from instagrapi.exceptions import ChallengeRequired, FeedbackRequired, PleaseWai
 import threading, time, random, os, gc
 
 app = Flask(__name__)
-app.secret_key = "sujal_hawk_rest_2025"
+app.secret_key = "sujal_hawk_final_fixed_2025"
 
-state = {"running": False, "sent": 0, "logs": ["STARTED - WAIT FOR LOGIN"], "start_time": None, "primary_ok": True}
+state = {"running": False, "sent": 0, "logs": ["PANEL READY - START DABAO"], "start_time": None, "primary_ok": True, "in_warmup": False}
 cfg = {
     "primary": {"sessionid": "", "thread_id": 0},
     "backups": [],
     "messages": [],
     "delay": 30,
-    "rest_after_msgs": 15,  # User decide
-    "rest_duration": 600    # User decide (default 10 min)
+    "warmup_duration": 600
 }
 
 DEVICES = [
@@ -46,6 +45,17 @@ def spam(cl, tid, msg):
         log(f"SEND FAIL → {str(e)[:60]}")
         return False
 
+def warmup(cl):
+    log(f"WARMUP STARTED ({cfg['warmup_duration']//60} min)")
+    state["in_warmup"] = True
+    start = time.time()
+    while time.time() - start < cfg["warmup_duration"] and state["running"]:
+        action = random.choice(["viewing stories", "liking posts", "reading DMs", "scrolling feed"])
+        log(f"WARMUP: Simulating {action}...")
+        time.sleep(random.uniform(10, 60))
+    state["in_warmup"] = False
+    log("WARMUP COMPLETE - SPAM SHURU")
+
 def get_primary():
     acc = cfg["primary"]
     cl = Client()
@@ -59,10 +69,10 @@ def get_primary():
         state["primary_ok"] = True
         return cl
     except LoginRequired:
-        log("PRIMARY SESSION EXPIRED — SWITCHING TO BACKUP")
+        log("PRIMARY SESSION EXPIRED — TRYING BACKUP")
         state["primary_ok"] = False
     except Exception as e:
-        log(f"PRIMARY LOGIN FAIL → {str(e)[:80]} — SWITCHING TO BACKUP")
+        log(f"PRIMARY LOGIN FAILED → {str(e)[:80]} — TRYING BACKUP")
         state["primary_ok"] = False
     return None
 
@@ -79,12 +89,15 @@ def get_backup():
             return cl
         except:
             continue
-    log("NO BACKUP LEFT — STOPPING")
+    log("NO WORKING BACKUP LEFT — STOPPING")
     state["running"] = False
     return None
 
 def loop():
     cl = get_primary()
+    if cl:
+        warmup(cl)
+
     while state["running"]:
         cl = None
         if state["primary_ok"]:
@@ -131,11 +144,10 @@ def start():
 
     cfg["messages"] = [m.strip() for m in request.form["messages"].split("\n") if m.strip()]
     cfg["delay"] = float(request.form.get("spam_delay", "30"))
-    cfg["rest_after_msgs"] = int(request.form.get("rest_after_msgs", "15"))
-    cfg["rest_duration"] = int(request.form.get("rest_duration", "600"))
+    cfg["warmup_duration"] = int(request.form.get("warmup_duration", "600"))
 
     threading.Thread(target=loop, daemon=True).start()
-    log(f"STARTED - PRIMARY + BACKUPS (Rest after {cfg['rest_after_msgs']} msgs for {cfg['rest_duration']//60} min)")
+    log(f"STARTED - PRIMARY + BACKUPS (Warmup: {cfg['warmup_duration']//60} min)")
 
     return jsonify({"ok": True})
 
